@@ -1,0 +1,82 @@
+name: Sync YouTube Tools → ai4recovery-download-toolkit
+
+# Triggers whenever the YouTube transcript tools are updated in this repo,
+# and also supports manual dispatch for an on-demand sync.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "yt_transcripts.py"
+      - "requirements.txt"
+      - "requirements-claude.txt"
+      - "requirements-openai.txt"
+      - "README_yt_transcripts.md"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual sync"
+        required: false
+        default: "Manual sync triggered"
+
+jobs:
+  sync:
+    name: Push updated tools to ai4recovery-download-toolkit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out source repo
+        uses: actions/checkout@v4
+
+      # ── Clone the destination repo using a PAT stored as a secret ────────────
+      # To set this up:
+      #   1. Create a GitHub Personal Access Token (classic) with `repo` scope
+      #      at https://github.com/settings/tokens
+      #   2. In THIS repo, go to Settings → Secrets and variables → Actions
+      #   3. Add a new secret named TOOLKIT_SYNC_TOKEN with the PAT value
+      - name: Clone ai4recovery-download-toolkit
+        env:
+          TOOLKIT_SYNC_TOKEN: ${{ secrets.TOOLKIT_SYNC_TOKEN }}
+        run: |
+          git clone \
+            https://x-access-token:${TOOLKIT_SYNC_TOKEN}@github.com/dualdiagnosis-ai/ai4recovery-download-toolkit.git \
+            dest-repo
+
+      - name: Copy updated tool files into toolkit repo
+        run: |
+          mkdir -p dest-repo/yt-transcript-tools
+          cp yt_transcripts.py          dest-repo/yt-transcript-tools/
+          cp requirements.txt           dest-repo/yt-transcript-tools/
+          cp requirements-claude.txt    dest-repo/yt-transcript-tools/
+          cp requirements-openai.txt    dest-repo/yt-transcript-tools/
+          cp README_yt_transcripts.md   dest-repo/yt-transcript-tools/
+
+      - name: Commit and push if there are changes
+        env:
+          TOOLKIT_SYNC_TOKEN: ${{ secrets.TOOLKIT_SYNC_TOKEN }}
+        run: |
+          cd dest-repo
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add yt-transcript-tools/
+
+          # Only commit if something actually changed
+          if git diff --staged --quiet; then
+            echo "No changes to sync — destination is already up to date."
+          else
+            COMMIT_SHA="${{ github.sha }}"
+            SHORT_SHA="${COMMIT_SHA:0:7}"
+            git commit -m "Auto-sync: YouTube transcript tools from source repo (${SHORT_SHA})
+
+Synced files:
+  yt-transcript-tools/yt_transcripts.py
+  yt-transcript-tools/requirements*.txt
+  yt-transcript-tools/README_yt_transcripts.md
+
+Source commit: ${{ github.repository }}@${COMMIT_SHA}
+Triggered by: ${{ github.actor }}
+
+Co-Authored-By: Oz <oz-agent@warp.dev>"
+            git push
+            echo "Sync complete."
+          fi

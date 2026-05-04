@@ -5,26 +5,33 @@ yt_transcripts.py  —  Bulk YouTube transcript downloader + AI summarizer
 
 Four modes, each saving/updating files as  01_Title.txt, 02_Title.txt, …
 
-  channel   All videos on a channel, ordered OLDEST → NEWEST
-  playlist  All videos in a playlist, in PLAYLIST ORDER
-  search    Top 25 / 50 / 100 search results, in SERP RANK ORDER
+  channel   ALL videos on a channel, ordered OLDEST → NEWEST (no limit)
+  playlist  ALL videos in a playlist, in PLAYLIST ORDER (no limit)
+  search    Interactive: prompts for query & result count (25/50/100/200/custom)
   summarize Batch-summarize an existing transcript directory
 
 USAGE
 -----
   python yt_transcripts.py channel  "https://www.youtube.com/@Channel"
   python yt_transcripts.py playlist "https://www.youtube.com/playlist?list=PLxxx"
-  python yt_transcripts.py search   "your query" --limit 25
+  python yt_transcripts.py search                        # fully interactive
+  python yt_transcripts.py search   "your query"         # prompts for count
+  python yt_transcripts.py search   "your query" --limit 50  # non-interactive
   python yt_transcripts.py summarize ./transcripts --style bullets
 
-COMMON OPTIONS  (channel / playlist / search)
+COMMON OPTIONS  (channel / playlist)
   --output-dir DIR      Save directory            (default: ./transcripts)
-  --limit N             Cap number of videos / search results
   --lang CODE           Preferred transcript language   (default: en)
   --delay SECS          Pause between requests          (default: 1.0)
   --summarize           Append an AI summary to each file inline
   --summary-model M     LLM model                (default: claude-opus-4-7)
   --style STYLE         prose | bullets | technical | brief  (default: prose)
+
+SEARCH OPTIONS
+  query                 Search query (prompted interactively if omitted)
+  --limit N             Skip the interactive menu and download N results
+  --output-dir DIR      Save directory  (default: ./transcripts)
+  --lang / --delay / --summarize / --summary-model / --style  (same as above)
 
 SUMMARIZE MODE OPTIONS
   input_dir             Directory with existing transcript .txt files
@@ -447,9 +454,9 @@ def _ydl_extract_entries(url: str) -> list[dict]:
     return [e for e in (info.get("entries") or []) if e and e.get("id")]
 
 
-def get_channel_videos(channel_url: str, limit: int | None = None) -> list[dict]:
+def get_channel_videos(channel_url: str) -> list[dict]:
     """
-    Return all regular videos from a channel ordered OLDEST -> NEWEST.
+    Return ALL regular videos from a channel ordered OLDEST -> NEWEST.
     YouTube returns newest-first; we reverse the list.
     Appends /videos to restrict to regular uploads (no Shorts, no streams).
     """
@@ -457,25 +464,35 @@ def get_channel_videos(channel_url: str, limit: int | None = None) -> list[dict]
         url = channel_url.rstrip("/") + "/videos"
     else:
         url = channel_url
-    print("  Fetching video list (this may take a while for large channels)...")
-    entries = list(reversed(_ydl_extract_entries(url)))
-    return entries[:limit] if limit else entries
+    print("  Fetching full video list (may take a while for large channels)...")
+    return list(reversed(_ydl_extract_entries(url)))
 
 
-def get_playlist_videos(playlist_url: str, limit: int | None = None) -> list[dict]:
-    """Return videos from a playlist in PLAYLIST ORDER (position 1, 2, 3 ...)."""
-    print("  Fetching playlist video list...")
-    entries = _ydl_extract_entries(playlist_url)
-    return entries[:limit] if limit else entries
+def get_playlist_videos(playlist_url: str) -> list[dict]:
+    """
+    Return ALL videos from a playlist in PLAYLIST ORDER (position 1, 2, 3 ...).
+
+    Accepts both canonical playlist URLs and video-with-playlist URLs:
+      https://www.youtube.com/playlist?list=PLxxx
+      https://www.youtube.com/watch?v=xxx&list=PLxxx  (list= is extracted)
+    """
+    from urllib.parse import urlparse, parse_qs
+    parsed = urlparse(playlist_url)
+    params = parse_qs(parsed.query)
+    if "list" in params and "playlist" not in parsed.path:
+        list_id     = params["list"][0]
+        playlist_url = f"https://www.youtube.com/playlist?list={list_id}"
+        print(f"  Extracted playlist ID: {list_id}")
+    print("  Fetching full playlist video list...")
+    return _ydl_extract_entries(playlist_url)
 
 
-def get_search_videos(query: str, limit: int = 25) -> list[dict]:
+def get_search_videos(query: str, limit: int) -> list[dict]:
     """
     Return top `limit` YouTube search results IN SERP RANK ORDER.
     yt-dlp's ytsearchN:QUERY returns results in YouTube's own search rank order.
+    `limit` must be a positive integer; any value is accepted.
     """
-    if limit not in (25, 50, 100):
-        print(f"  [warn] limit={limit}. Recommended values: 25, 50, 100")
     print(f'  Running YouTube search: "{query}" (top {limit} results)...')
     return _ydl_extract_entries(f"ytsearch{limit}:{query}")
 
@@ -683,6 +700,66 @@ def run_summarize_mode(
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# INTERACTIVE SEARCH PROMPT
+# ════════════════════════════════════════════════════════════════════════════
+
+_SEARCH_MENU = [
+    ("1", 25,  " 1)   25 results"),
+    ("2", 50,  " 2)   50 results"),
+    ("3", 100, " 3)  100 results"),
+    ("4", 200, " 4)  200 results"),
+    ("5", None, " 5)  Other — please specify"),
+]
+
+
+def _prompt_search(query: str | None, limit: int | None) -> tuple[str, int]:
+    """
+    Interactively prompt for the search query and/or result count if not
+    already provided on the command line.
+
+    Returns (query, limit).
+    """
+    # ── Step a: search term ───────────────────────────────────────────────────
+    if not query:
+        print()
+        query = input("  Enter your YouTube search query: ").strip()
+        if not query:
+            sys.exit("ERROR: Search query cannot be empty.")
+
+    # ── Step b: result count (show menu only when --limit was not passed) ─────
+    if limit is None:
+        print()
+        print(f'  Search query: "{query}"')
+        print("  How many search results would you like to download?")
+        print()
+        for key, val, label in _SEARCH_MENU:
+            print(f"    {label}")
+        print()
+
+        while True:
+            choice = input("  Enter your choice [1-5]: ").strip()
+            matched = {key: val for key, val, _ in _SEARCH_MENU}.get(choice)
+            if matched is not None:
+                limit = matched
+                break
+            if choice == "5":
+                while True:
+                    raw = input("  Enter the number of results to download: ").strip()
+                    try:
+                        n = int(raw)
+                        if n > 0:
+                            limit = n
+                            break
+                        print("  Please enter a positive integer.")
+                    except ValueError:
+                        print("  Invalid input. Please enter a whole number.")
+                break
+            print("  Invalid choice. Please enter 1, 2, 3, 4, or 5.")
+
+    return query, limit
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # CLI
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -694,12 +771,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = root.add_subparsers(dest="mode", required=True, metavar="MODE")
 
-    # Shared parent for channel / playlist / search
+    # ── Shared parent for channel / playlist ────────────────────────────────
+    # Note: --limit is intentionally NOT in the shared parser.
+    # Channel and playlist always download EVERYTHING.
+    # Search has its own --limit (or interactive menu).
     shared = argparse.ArgumentParser(add_help=False)
     shared.add_argument("--output-dir", default="./transcripts",
                         help="Save directory  (default: ./transcripts)")
-    shared.add_argument("--limit", type=int, default=None,
-                        help="Max videos to process")
     shared.add_argument("--lang", default="en",
                         help="Preferred transcript language code  (default: en)")
     shared.add_argument("--delay", type=float, default=1.0,
@@ -712,30 +790,43 @@ def build_parser() -> argparse.ArgumentParser:
                         choices=["prose", "bullets", "technical", "brief"],
                         help="Summary style  (default: prose)")
 
-    # channel
+    # channel — downloads ALL videos with no limit
     p_ch = sub.add_parser(
         "channel", parents=[shared],
-        help="Download every video on a channel, OLDEST -> NEWEST (01_ = oldest)",
+        help="Download ALL videos on a channel, OLDEST -> NEWEST (no limit)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_ch.add_argument("url", help="YouTube channel URL")
 
-    # playlist
+    # playlist — downloads ALL videos with no limit
     p_pl = sub.add_parser(
         "playlist", parents=[shared],
-        help="Download every video in a playlist, in PLAYLIST ORDER (01_ = first)",
+        help="Download ALL videos in a playlist, in PLAYLIST ORDER (no limit)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p_pl.add_argument("url", help="YouTube playlist URL")
 
-    # search
+    # search — interactive prompts for query + count, or pass both on CLI
     p_sr = sub.add_parser(
         "search", parents=[shared],
-        help="Download top-N search results in SERP RANK ORDER (01_ = #1 result)",
+        help="Download top-N search results in SERP RANK ORDER (interactive menu)",
+        description=(
+            "Download transcripts for YouTube search results in SERP rank order.\n\n"
+            "If the query is omitted, you will be prompted to enter it.\n"
+            "If --limit is omitted, an interactive menu lets you choose:\n"
+            "  1) 25   2) 50   3) 100   4) 200   5) Other (specify)\n\n"
+            "Pass --limit N to skip the menu (useful for scripting).\n"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p_sr.add_argument("query", help="YouTube search query string")
-    # --limit inherited from shared; main() defaults to 25 for search mode
+    p_sr.add_argument(
+        "query", nargs="?", default=None,
+        help="YouTube search query (prompted interactively if omitted)",
+    )
+    p_sr.add_argument(
+        "--limit", type=int, default=None,
+        help="Number of results to download — skips the interactive menu",
+    )
 
     # summarize
     p_sm = sub.add_parser(
@@ -795,25 +886,28 @@ def main() -> None:
 
     if args.mode == "channel":
         print(f"\n{'=' * 60}")
-        print("MODE: Channel  (oldest -> newest)")
+        print("MODE: Channel  (ALL videos, oldest -> newest, no limit)")
         print(f"URL : {args.url}")
-        entries      = get_channel_videos(args.url, args.limit)
+        entries      = get_channel_videos(args.url)
         source_label = f"channel  {args.url}"
 
     elif args.mode == "playlist":
         print(f"\n{'=' * 60}")
-        print("MODE: Playlist  (playlist order)")
+        print("MODE: Playlist  (ALL videos, playlist order, no limit)")
         print(f"URL : {args.url}")
-        entries      = get_playlist_videos(args.url, args.limit)
+        entries      = get_playlist_videos(args.url)
         source_label = f"playlist  {args.url}"
 
     elif args.mode == "search":
-        limit = args.limit or 25
+        query, limit = _prompt_search(
+            getattr(args, "query", None),
+            getattr(args, "limit", None),
+        )
         print(f"\n{'=' * 60}")
         print("MODE: Search  (SERP rank order)")
-        print(f'Query: "{args.query}"  |  Limit: {limit}')
-        entries      = get_search_videos(args.query, limit)
-        source_label = f'search "{args.query}" top {limit}'
+        print(f'Query: "{query}"  |  Results: {limit}')
+        entries      = get_search_videos(query, limit)
+        source_label = f'search "{query}" top {limit}'
 
     else:
         parser.print_help()
