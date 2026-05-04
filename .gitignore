@@ -1,0 +1,66 @@
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+.env
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# ── HTTrack build system & source ────────────────────────────────────────────
+# All pre-existing httrack files are intentionally left untracked.
+Makefile
+Makefile.in
+aclocal.m4
+autom4te.cache/
+compile
+config.guess
+config.h
+config.h.in
+config.log
+config.status
+config.sub
+configure
+configure.ac
+depcomp
+install-sh
+libtool
+ltmain.sh
+stamp-h1
+src/
+libtest/
+lang/
+html/
+*.o
+*.lo
+*.la
+*.a
+*.so
+*.dylib
+.libs/
+.deps/
+
+# ── Editor / IDE ─────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Transcripts produced by the tool (large, not source) ─────────────────────
+transcripts/
