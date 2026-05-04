@@ -1,0 +1,8 @@
+# ── OpenAI (GPT) summarization ────────────────────────────────────────────────
+# Install: pip install -r requirements.txt -r requirements-openai.txt
+# Required env var: export OPENAI_API_KEY="sk-proj-..."
+#
+# v1.0.0+ required for the client-instance API:
+#   openai.OpenAI() and client.chat.completions.create()
+
+openai>=1.0.0

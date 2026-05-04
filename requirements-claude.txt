@@ -1,0 +1,11 @@
+# ── Anthropic (Claude) summarization ─────────────────────────────────────────
+# Install: pip install -r requirements.txt -r requirements-claude.txt
+# Required env var: export ANTHROPIC_API_KEY="sk-ant-..."
+#
+# v0.49.0+ required for:
+#   - client.messages.stream() streaming context manager
+#   - cache_control on system prompt content blocks
+#   - thinking={"type": "adaptive"} for Opus 4.7 / 4.6 / Sonnet 4.6
+#   - stream.get_final_message()
+
+anthropic>=0.49.0

@@ -81,47 +81,169 @@ The script **never downloads video files**. It fetches only metadata and caption
 
 ## 3. Installation
 
-### Step 1 — Install core dependencies
+### Requirements files
+
+The repo ships three requirements files so you install only what you need:
+
+| File | Contents | When to use |
+|---|---|---|
+| `requirements.txt` | `yt-dlp`, `youtube-transcript-api` | Always — core transcript download |
+| `requirements-claude.txt` | `anthropic` | Add when using Claude summarization |
+| `requirements-openai.txt` | `openai` | Add when using OpenAI summarization |
+
+---
+
+### Recommended setup — virtual environment
+
+Using a virtual environment keeps the tool's dependencies isolated from your
+system Python and other projects.
+
+#### Step 1 — Check your Python version
 
 ```bash
-pip install yt-dlp youtube-transcript-api
+python3 --version
 ```
 
-### Step 2 — Install a summarization library (optional)
-
-Only needed if you plan to use `--summarize` or the `summarize` subcommand.
+Python **3.10 or newer** is required. On macOS you can install a newer version
+via [Homebrew](https://brew.sh) if needed:
 
 ```bash
-# Recommended: Claude (Anthropic)
-pip install anthropic
-
-# Alternative: GPT (OpenAI)
-pip install openai
+brew install python@3.12
 ```
 
-### Step 3 — Verify the installation
+#### Step 2 — Create the virtual environment
+
+From inside the project directory:
+
+```bash
+python3 -m venv .venv
+```
+
+This creates a `.venv/` folder containing an isolated Python interpreter and
+`pip`. It is excluded from git via `.gitignore`.
+
+#### Step 3 — Activate the virtual environment
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows (Command Prompt)
+.venv\Scripts\activate.bat
+
+# Windows (PowerShell)
+.venv\Scripts\Activate.ps1
+```
+
+Your shell prompt will change to show `(.venv)` while the environment is active.
+All `pip install` and `python` commands now operate inside the venv.
+
+#### Step 4 — Install core dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+#### Step 5 — Install summarization dependencies (optional)
+
+Install the library that matches the API you have a key for:
+
+```bash
+# Claude (Anthropic) — recommended
+pip install -r requirements-claude.txt
+
+# GPT (OpenAI)
+pip install -r requirements-openai.txt
+
+# Both (if you want to switch between them)
+pip install -r requirements-claude.txt -r requirements-openai.txt
+```
+
+#### Step 6 — Verify the installation
 
 ```bash
 python3 -c "
 import yt_dlp, youtube_transcript_api
-print('yt-dlp:', yt_dlp.version.__version__)
+print('yt-dlp              :', yt_dlp.version.__version__)
 print('youtube-transcript-api: OK')
+try:
+    import anthropic
+    print('anthropic          :', anthropic.__version__)
+except ImportError:
+    print('anthropic          : not installed (optional)')
+try:
+    import openai
+    print('openai             :', openai.__version__)
+except ImportError:
+    print('openai             : not installed (optional)')
 "
 ```
 
-Expected output:
+Expected output (core only):
 ```
-yt-dlp: 2026.03.17
+yt-dlp              : 2026.3.17
 youtube-transcript-api: OK
+anthropic           : not installed (optional)
+openai              : not installed (optional)
 ```
+
+With Claude installed:
+```
+yt-dlp              : 2026.3.17
+youtube-transcript-api: OK
+anthropic           : 0.54.0
+openai              : not installed (optional)
+```
+
+#### Deactivating the environment
+
+```bash
+deactivate
+```
+
+Run this when you are done. Your prompt returns to normal.
+
+#### Re-activating in a new terminal
+
+Every time you open a new terminal to use the tool, activate the venv first:
+
+```bash
+cd /path/to/project
+source .venv/bin/activate
+python yt_transcripts.py ...
+```
+
+---
+
+### Alternative — install without a virtual environment
+
+If you prefer to install globally (not recommended for shared machines):
+
+```bash
+pip3 install -r requirements.txt
+
+# Optional: with Claude
+pip3 install -r requirements.txt -r requirements-claude.txt
+```
+
+---
 
 ### Upgrading
 
+With the venv active:
+
 ```bash
-pip install --upgrade yt-dlp youtube-transcript-api anthropic openai
+pip install --upgrade -r requirements.txt
+
+# Upgrade summarization libraries if installed
+pip install --upgrade anthropic   # if using Claude
+pip install --upgrade openai      # if using OpenAI
 ```
 
-Keeping `yt-dlp` up to date is important — YouTube regularly changes its internal APIs and `yt-dlp` updates its extractors to match.
+Keeping `yt-dlp` up to date is especially important — YouTube changes its
+internal APIs frequently and `yt-dlp` updates its extractors to match.
+If transcript or metadata fetching suddenly breaks, upgrading `yt-dlp` is
+almost always the fix.
 
 ---
 

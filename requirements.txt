@@ -1,0 +1,25 @@
+# yt_transcripts.py — Python dependency manifest
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# QUICK INSTALL
+#   Core only (transcript download, no summarization):
+#     pip install -r requirements.txt
+#
+#   With Claude summarization (recommended):
+#     pip install -r requirements.txt -r requirements-claude.txt
+#
+#   With OpenAI summarization:
+#     pip install -r requirements.txt -r requirements-openai.txt
+#
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Core — required for all modes ────────────────────────────────────────────
+
+# YouTube video list ordering, metadata extraction, and search results.
+# Keep this updated — YouTube changes its internal API frequently.
+yt-dlp>=2024.1.0
+
+# YouTube caption / transcript text retrieval.
+# v1.0.0+ required: the script uses the instance-method API (YouTubeTranscriptApi())
+# introduced in v1.x. The older class-method API (v0.x) is not compatible.
+youtube-transcript-api>=1.0.0
